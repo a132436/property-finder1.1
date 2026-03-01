@@ -48,8 +48,8 @@ st.markdown("""
 
 # ── Import modules ────────────────────────────────────────────────────────────
 from modules.apify_scraper import run_apify_scrape
-from modules.keyword_filter import apply_keyword_filter
-from modules.claude_analyser import run_claude_analysis
+from modules.keyword_filter import filter_by_keywords as apply_keyword_filter
+from modules.claude_analyser import analyse_listings as run_claude_analysis
 from modules.commute_checker import run_commute_check
 from modules.url_validator import validate_rightmove_url
 

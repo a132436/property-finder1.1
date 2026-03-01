@@ -61,6 +61,7 @@ defaults = {
     "raw_listings": None,
     "keyword_survivors": None,
     "claude_results": None,
+    "commute_results": None,   # raw commute data — persists across re-runs
     "final_results": None,
     "input_url": "",
 }
@@ -363,46 +364,55 @@ if st.session_state.step >= 4:
 # STEP 5 — COMMUTE CHECK
 # ═════════════════════════════════════════════════════════════════════════════
 if st.session_state.step >= 5:
-    st.markdown('<div class="step-box">', unsafe_allow_html=True)
+    step5_class = "step-box step-complete" if st.session_state.commute_results is not None else "step-box"
+    st.markdown(f'<div class="{step5_class}">', unsafe_allow_html=True)
     st.subheader("Step 5 — Commute time check")
     st.markdown(f"""
     Google Maps will calculate public transport commute times from each property to Bristol Temple Meads 
     and London Paddington. Running for **{len(st.session_state.claude_results or [])} properties**.
     """)
 
+    # Sliders always active — changing them re-filters existing results instantly,
+    # or sets parameters for the next run
     col1, col2 = st.columns(2)
     with col1:
-        max_bristol = st.slider("Max commute to Bristol (mins)", 30, 180, 90, 5, disabled=st.session_state.final_results is not None)
+        max_bristol = st.slider("Max commute to Bristol (mins)", 30, 180, 90, 5)
     with col2:
-        max_london = st.slider("Max commute to London (mins)", 30, 180, 100, 5, disabled=st.session_state.final_results is not None)
+        max_london = st.slider("Max commute to London (mins)", 30, 180, 100, 5)
 
-    if st.session_state.final_results is None:
-        results = st.session_state.claude_results or []
-        estimated_cost = len(results) * 2 * 0.001  # 2 lookups per property
-        st.info(f"💰 Estimated Google Maps API cost: ~£{estimated_cost:.3f} ({len(results) * 2} lookups)")
+    # ── Run commute check (first time, or re-run) ─────────────────────────────
+    if st.session_state.commute_results is None:
+        properties = st.session_state.claude_results or []
+        estimated_cost = len(properties) * 2 * 0.001
+        st.info(f"💰 Estimated Google Maps API cost: ~£{estimated_cost:.3f} ({len(properties) * 2} lookups)")
 
         if st.button("🗺️ Check commute times", type="primary"):
-            final = []
+            checked = []
             progress = st.progress(0, text="Checking commute times...")
-            for i, listing in enumerate(results):
+            for i, listing in enumerate(properties):
                 result = run_commute_check(listing)
-                final.append(result)
-                progress.progress((i + 1) / len(results), text=f"Checked {i+1} of {len(results)} properties...")
+                checked.append(result)
+                progress.progress((i + 1) / len(properties), text=f"Checked {i+1} of {len(properties)} properties...")
             progress.empty()
-            st.session_state.final_results = final
+            st.session_state.commute_results = checked
+            st.session_state.final_results = checked  # keep for backwards compat
             st.rerun()
 
-    if st.session_state.final_results is not None:
-        final = st.session_state.final_results
+    # ── Results display ───────────────────────────────────────────────────────
+    if st.session_state.commute_results is not None:
+        all_results = st.session_state.commute_results
 
-        # Apply commute filters
+        # Filter is applied live — no re-run needed just to change thresholds
         filtered_final = [
-            r for r in final
+            r for r in all_results
             if (r.get("commute_bristol_mins") or 999) <= max_bristol
             and (r.get("commute_london_mins") or 999) <= max_london
         ]
 
-        st.success(f"✅ Commute check complete — {len(filtered_final)} properties match your commute limits (of {len(final)} checked)")
+        st.success(
+            f"✅ {len(filtered_final)} properties match your commute limits "
+            f"(of {len(all_results)} checked) — adjust sliders above to update instantly"
+        )
 
         if filtered_final:
             display = []
@@ -424,7 +434,6 @@ if st.session_state.step >= 5:
             st.markdown("### 🏡 Your shortlist")
             st.dataframe(display, use_container_width=True, height=400)
 
-            # Download button
             import pandas as pd
             df = pd.DataFrame(display)
             csv = df.to_csv(index=False)
@@ -435,7 +444,6 @@ if st.session_state.step >= 5:
                 mime="text/csv",
             )
 
-            # Individual property cards
             st.markdown("### Property details")
             for r in filtered_final:
                 with st.expander(f"🏠 {r.get('address', 'Unknown')} — £{r.get('price', 0):,}"):
@@ -447,11 +455,18 @@ if st.session_state.step >= 5:
                     if r.get("url"):
                         st.markdown(f"[View on Rightmove →]({r['url']})")
         else:
-            st.warning("No properties matched your commute time limits. Try increasing the maximum commute times above.")
+            st.warning("No properties matched your commute time limits. Try increasing the sliders above — no re-run needed.")
 
-        col1, col2 = st.columns([1, 3])
+        # ── Bottom controls ───────────────────────────────────────────────────
+        st.divider()
+        col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 Start a new search"):
+            if st.button("🔄 Re-run commute check", help="Re-fetches commute times from Google Maps. Use if you want to check a different departure time or if results look wrong. Steps 1–4 are preserved."):
+                st.session_state.commute_results = None
+                st.session_state.final_results = None
+                st.rerun()
+        with col2:
+            if st.button("🔁 Start a new search", help="Clears everything and starts from Step 1."):
                 for k in defaults:
                     st.session_state[k] = defaults[k]
                 st.rerun()

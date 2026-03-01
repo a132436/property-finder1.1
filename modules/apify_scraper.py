@@ -3,7 +3,7 @@ import requests
 import streamlit as st
 
 
-ACTOR_ID = "dhrumil/rightmove-scraper"
+ACTOR_ID = "jKpgGfgRfzrGgEMa8"
 APIFY_BASE = "https://api.apify.com/v2"
 
 
